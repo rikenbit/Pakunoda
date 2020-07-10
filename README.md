@@ -7,8 +7,12 @@ Installation
 
 How to run
 ======
+
 ~~~~
-PAKUNODA_INDIR="test/data" PAKUNODA_OUTDIR="test/output" snakemake --cores 1
+PAKUNODA_INDIR=test/data PAKUNODA_OUTDIR=test/output \
+PAKUNODA_FOLDS=5 PAKUNODA_INIT=????\
+PAKUNODA_THREADS=4 PAKUNODA_GB=300 \
+snakemake --cores 1
 ~~~~
 
 
