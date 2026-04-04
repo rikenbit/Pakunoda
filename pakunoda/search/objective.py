@@ -2,10 +2,11 @@
 
 Defines how a single trial is evaluated:
 1. Suggest hyperparameters (rank, init_policy, etc.)
-2. Apply mask to data
-3. Run factorization on masked data
-4. Compute imputation error on held-out elements
-5. Return objective value
+2. Patch the problem dict with trial-specific params
+3. Apply mask to data
+4. Run factorization on masked data
+5. Compute imputation error on held-out elements
+6. Return objective value
 
 The objective is structured so that:
 - It is self-contained (one function call per trial)
@@ -20,6 +21,7 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 
+from pakunoda.compiler import patch_problem_for_trial
 from pakunoda.search.masking import apply_mask, create_masks_for_tensors, imputation_error
 from pakunoda.search.search_space import SearchSpace
 
@@ -35,6 +37,8 @@ class Objective:
         masks: Dict mapping tensor_id -> boolean mask.
         problem: The compiled problem dict for this candidate.
         solver_fn: Function(masked_tensors_data, params, problem) -> reconstructed_data.
+                   ``params`` is the trial hyperparameters dict.
+                   ``problem`` is the problem dict patched with trial params.
                    Returns Dict[tensor_id -> np.ndarray].
     """
 
@@ -61,6 +65,9 @@ class Objective:
         # Suggest parameters
         params = self.search_space.suggest(trial)
 
+        # Patch problem dict so solver sees trial-specific rank/init_policy
+        patched_problem = patch_problem_for_trial(self.problem, params)
+
         # Prepare masked data
         masked_data = {}
         for tid, data in self.tensors_data.items():
@@ -73,7 +80,7 @@ class Objective:
         # Run solver
         start_time = time.time()
         try:
-            reconstructed = self.solver_fn(masked_data, params, self.problem)
+            reconstructed = self.solver_fn(masked_data, params, patched_problem)
         except Exception as e:
             trial.set_user_attr("error", str(e))
             trial.set_user_attr("success", False)
@@ -121,16 +128,18 @@ def mock_solver(masked_data, params, problem):
     """SVD-based mock solver for development and testing.
 
     For each 2D matrix, computes a rank-k SVD approximation.
+    Couplings are NOT enforced (each matrix is decomposed independently).
+    This is a testing approximation, not a coupled factorization.
 
     Args:
         masked_data: Dict mapping tensor_id -> masked data array.
         params: Hyperparameters dict with at least 'rank'.
-        problem: Problem definition (unused in mock).
+        problem: Problem definition (rank also read from problem['rank'] as fallback).
 
     Returns:
         Dict mapping tensor_id -> reconstructed array.
     """
-    rank = params["rank"]
+    rank = params.get("rank") or problem.get("rank", 3)
     reconstructed = {}
     for tid, data in masked_data.items():
         if data.ndim == 2:
@@ -138,6 +147,6 @@ def mock_solver(masked_data, params, problem):
             k = min(rank, len(s))
             reconstructed[tid] = U[:, :k] @ np.diag(s[:k]) @ Vt[:k, :]
         else:
-            # For higher-order tensors, just return the masked data as-is (stub)
+            # Higher-order tensors: not supported by mock, return as-is
             reconstructed[tid] = data.copy()
     return reconstructed

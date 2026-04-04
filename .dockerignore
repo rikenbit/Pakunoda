@@ -1,0 +1,6 @@
+.snakemake/
+examples/*/results/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/

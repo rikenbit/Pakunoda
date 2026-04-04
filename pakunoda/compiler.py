@@ -15,6 +15,13 @@ Two compilation paths exist for historical reasons:
     stage) and produces a problem.json scoped to that candidate's block subset,
     couplings, and mode assignments.  Used by the ``compile_candidates`` rule.
     This is the primary path for the search pipeline.
+
+Rank semantics:
+    ``rank`` sets the number of components for every factor (both common and
+    specific) in CoupledMWCA.  This is a simplification; future versions may
+    allow per-factor rank.  The value is sourced from (in priority order):
+    1. candidate.rank  (set by search trial)
+    2. config search.max_rank  (default 10)
 """
 
 from __future__ import annotations
@@ -25,12 +32,15 @@ from typing import Dict, List, Optional
 from pakunoda import __version__
 
 
-def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
+def compile_problem(config, graph, block_metadata):
+    # type: (dict, dict, dict) -> dict
     """Compile a decomposition problem definition for mwTensor.
+
+    Project-level compile: covers all blocks in config.
 
     Args:
         config: Validated Pakunoda config.
-        graph: Relation graph from build_relation_graph.
+        graph: Relation graph from build_relation_graph (dict).
         block_metadata: Dict mapping block_id -> ingest metadata.
 
     Returns:
@@ -39,7 +49,6 @@ def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
     solver_config = config.get("solver", {})
     search_config = config.get("search", {})
 
-    # Build the tensor list for mwTensor
     tensors = []
     for block in config["blocks"]:
         bid = block["id"]
@@ -52,9 +61,6 @@ def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
             "data_file": meta.get("canonical_file", block["file"]),
         })
 
-    # Build the coupling structure
-    # For CoupledMWCA, we need to express which modes are shared across tensors.
-    # Group modes by their equivalence classes (connected components in exact relations).
     mode_groups = _build_mode_groups(graph)
 
     couplings = []
@@ -66,7 +72,6 @@ def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
                 "members": [{"block": m["block"], "mode": m["mode"]} for m in members],
             })
 
-    # Build nested relations separately
     nested_rels = []
     for edge in graph["edges"]:
         if edge["type"] == "nested":
@@ -81,10 +86,13 @@ def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
         "project_id": config["project"]["id"],
         "solver": {
             "family": solver_config.get("family", "CoupledMWCA"),
+            "init_policy": "random",
+            "seed": None,
         },
         "tensors": tensors,
         "couplings": couplings,
         "nested_relations": nested_rels,
+        "rank": search_config.get("max_rank", 10),
         "search": {
             "max_rank": search_config.get("max_rank", 10),
         },
@@ -93,12 +101,12 @@ def compile_problem(config: dict, graph: dict, block_metadata: dict) -> dict:
     return problem
 
 
-def _build_mode_groups(graph: dict) -> List[List[Dict]]:
+def _build_mode_groups(graph):
+    # type: (dict) -> List[List[Dict]]
     """Build equivalence classes of modes connected by exact relations.
 
     Uses union-find over exact edges to group modes that must share dimensions.
     """
-    # Parse node IDs into (block, mode) pairs
     node_ids = [n["id"] for n in graph["nodes"]]
     parent = {nid: nid for nid in node_ids}
 
@@ -113,12 +121,10 @@ def _build_mode_groups(graph: dict) -> List[List[Dict]]:
         if ra != rb:
             parent[ra] = rb
 
-    # Union exact-related modes
     for edge in graph["edges"]:
         if edge["type"] == "exact":
             union(edge["source"], edge["target"])
 
-    # Group by root
     groups = {}
     for nid in node_ids:
         root = find(nid)
@@ -140,12 +146,22 @@ def compile_candidate(candidate, config, block_metadata):
         block_metadata: Dict mapping block_id -> ingest metadata.
 
     Returns:
-        Problem definition dict for mwTensor.
-    """
-    # Build block lookup
-    block_defs = {b["id"]: b for b in config["blocks"]}
+        Problem definition dict for mwTensor.  Key fields consumed by the solver:
 
-    # Only include blocks in this candidate
+        - solver.family       -> selects mwTensor algorithm
+        - solver.init_policy  -> passed to initCoupledMWCA (random/svd/nonneg_random)
+        - solver.seed         -> reproducibility seed for initCoupledMWCA
+        - rank                -> sets dims for all common and specific factors
+        - tensors[].data_file -> loaded as Xs
+        - couplings[]         -> builds common_model (shared factor labels)
+        - mode_assignments[]  -> sharing=common/specific sets factor labels;
+                                 status=freeze sets decomp=FALSE for that factor
+        - nested_relations[]  -> NOT consumed by solver; raises error at run time
+    """
+    block_defs = {b["id"]: b for b in config["blocks"]}
+    search_config = config.get("search", {})
+
+    # Tensors: only include blocks in this candidate
     tensors = []
     for bid in candidate["blocks"]:
         block = block_defs[bid]
@@ -158,17 +174,18 @@ def compile_candidate(candidate, config, block_metadata):
             "data_file": meta.get("canonical_file", block["file"]),
         })
 
-    # Couplings from candidate
-    couplings = candidate.get("couplings", [])
-
-    # Separate nested relations
-    nested_rels = [c for c in couplings if c["type"] == "nested"]
-    exact_couplings = [c for c in couplings if c["type"] == "exact"]
+    # Couplings: separate exact from nested
+    all_couplings = candidate.get("couplings", [])
+    exact_couplings = [c for c in all_couplings if c["type"] == "exact"]
+    nested_rels = [c for c in all_couplings if c["type"] == "nested"]
 
     # Mode assignments
     mode_assignments = candidate.get("mode_assignments", [])
 
-    search_config = config.get("search", {})
+    # Rank: candidate-level (from search) > config-level (max_rank)
+    rank = candidate.get("rank")
+    if rank is None:
+        rank = search_config.get("max_rank", 10)
 
     problem = {
         "version": __version__,
@@ -176,12 +193,14 @@ def compile_candidate(candidate, config, block_metadata):
         "project_id": config["project"]["id"],
         "solver": {
             "family": candidate.get("solver_family", "CoupledMWCA"),
+            "init_policy": "random",
+            "seed": None,
         },
         "tensors": tensors,
         "couplings": exact_couplings,
         "nested_relations": nested_rels,
         "mode_assignments": mode_assignments,
-        "rank": candidate.get("rank"),
+        "rank": rank,
         "search": {
             "max_rank": search_config.get("max_rank", 10),
         },
@@ -190,6 +209,29 @@ def compile_candidate(candidate, config, block_metadata):
     return problem
 
 
-def problem_to_json(problem: dict) -> str:
+def patch_problem_for_trial(problem, params):
+    # type: (dict, dict) -> dict
+    """Create a copy of a problem dict with trial-specific hyperparameters overlaid.
+
+    Used by the search objective to inject Optuna trial params into the problem
+    before passing to the solver function.
+
+    Args:
+        problem: Base problem dict from compile_candidate.
+        params: Trial params from SearchSpace.suggest() — must have 'rank',
+                'init_policy'; may have 'weight_scaling'.
+
+    Returns:
+        Shallow-copied problem dict with solver/rank overridden.
+    """
+    patched = dict(problem)
+    patched["rank"] = params["rank"]
+    patched["solver"] = dict(problem.get("solver", {}))
+    patched["solver"]["init_policy"] = params.get("init_policy", "random")
+    return patched
+
+
+def problem_to_json(problem):
+    # type: (dict) -> str
     """Serialize problem to JSON."""
     return json.dumps(problem, indent=2)

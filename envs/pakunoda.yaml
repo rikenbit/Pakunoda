@@ -3,9 +3,22 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
+  # Python
   - python>=3.10
   - snakemake>=8.0
   - numpy>=1.24
   - pyyaml>=6.0
   - optuna>=3.0
   - pytest>=7.0
+  # R (core + mwTensor dependencies pre-installed via conda to speed up build)
+  - r-base>=4.1
+  - r-jsonlite
+  - r-remotes
+  - r-rcppcnpy
+  - r-ggplot2
+  - r-igraph
+  - r-matrix
+  - r-mass
+  - r-rcolorbrewer
+  - r-r6
+  - bioconductor-mixomics

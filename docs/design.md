@@ -101,11 +101,26 @@ The **compile_candidate** function transforms a Candidate into a
 `CoupledMWCAParams`-equivalent JSON structure that mwTensor can consume.
 Each problem JSON includes:
 
-- Tensor definitions (id, kind, modes, shape, data file path)
-- Coupling groups (which modes are shared)
-- Mode assignments (decompose/freeze, common/specific)
-- Nested relations (if any)
-- Search parameters (max_rank)
+- **solver.family** — algorithm selection (CoupledMWCA)
+- **solver.init_policy** — initialization for factor matrices (random/svd/nonneg_random)
+- **solver.seed** — reproducibility seed
+- **rank** — number of components for all factors (common + specific).
+  Sourced from candidate.rank (set by search trial) or config search.max_rank.
+  In CoupledMWCA, this sets `dims` for every factor label.
+- **tensors[]** — data arrays (id, kind, modes, shape, data_file)
+- **couplings[]** — exact coupling groups → `common_model` factor labels (F0, F1, ...)
+- **mode_assignments[]** — per-mode configuration:
+  - `sharing=common` → factor label from coupling group (shared across blocks)
+  - `sharing=specific` → unique factor label (S_blockid_N)
+  - `status=decompose` → `decomp=TRUE` in CoupledMWCA
+  - `status=freeze` → `decomp=FALSE` (factor fixed, not updated during optimization)
+- **nested_relations[]** — **not yet consumed by solver**; run_candidate.R raises
+  an error if non-empty
+- **search.max_rank** — upper bound for rank search
+
+The search pipeline uses `patch_problem_for_trial(problem, params)` to overlay
+trial-specific hyperparameters (rank, init_policy) onto the base problem dict
+before passing to the solver function.
 
 ## Enumeration constraints
 
@@ -136,8 +151,13 @@ The config declares:
 
 - **exact**: Two modes represent the same entities in the same order and count.
   Dimensions must match exactly.
-- **nested**: One mode's entities are a subset or grouping of another's.
-  Requires a mapping file. (Schema defined, mapping processing is stub.)
+- **nested**: One mode's entities are a subset or grouping of another's
+  (e.g., genes → gene families).  Requires a mapping file.
+  **Not yet executable**: mwTensor's `CoupledMWCA` requires exact dimension
+  matching across shared factors, so nested relations cannot be directly passed
+  to the solver.  A future implementation would pre-aggregate data using the
+  mapping matrix before coupling.  Currently, candidates with nested relations
+  are enumerated but rejected at run time with an explicit error.
 
 ## Key design decisions
 

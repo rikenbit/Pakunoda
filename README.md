@@ -16,7 +16,7 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 
 - **Not a solver library.** The actual decomposition is performed by `mwTensor`. Pakunoda constructs the problem; `mwTensor` solves it.
 - **Not a visualization tool.** Report generation is planned but not yet implemented.
-- **Not an AutoML system.** Hyperparameter search (Optuna) is planned but not yet implemented.
+- **Not a full AutoML system.** Optuna-based MVP search (rank, init policy) is implemented, but advanced features — multi-objective optimization, richer recommendation, and automated model selection — are not yet available.
 
 ## Responsibility split
 
@@ -41,7 +41,7 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 
 **Mock / stub areas:**
 - **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), all execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. The toy example runs entirely in mock mode.
-- **Nested relation mappings.** `nested` relations are accepted in config and enumerated as candidates, but the mapping file is not yet read or applied during compilation. The mapping path is passed through to the problem JSON for mwTensor to handle.
+- **Nested relation mappings.** `nested` relations are accepted in config and enumerated as candidates, but execution is blocked: `run_candidate.R` and `run_candidates.py` raise an explicit error if a candidate contains nested relations. The mapping file path is preserved in the problem JSON but not yet processed.
 - **Recommendation heuristics.** `best_by_balanced_score` uses fixed weights (0.7 error, 0.3 complexity) with min-max normalization. This is a simple heuristic, not a principled selection criterion.
 
 **Not yet implemented:**

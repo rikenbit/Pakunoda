@@ -2,6 +2,11 @@
 
 Reads compiled_manifest.json, runs each candidate, writes result JSONs
 and a run_manifest.json.
+
+Solver selection:
+- If search.mock is true, uses Python SVD-based mock solver.
+- Otherwise, tries R/mwTensor via run_candidate.R.
+- Falls back to mock if R or mwTensor is unavailable.
 """
 
 import json
@@ -37,6 +42,25 @@ for entry in compiled_manifest["problems"]:
     with open(problem_file) as f:
         problem = json.load(f)
 
+    # Check for unsupported nested relations
+    nested = problem.get("nested_relations", [])
+    if nested:
+        result = {
+            "candidate_id": candidate_id,
+            "success": False,
+            "error_message": "Nested relations are not yet supported by the solver. "
+                             "Set allow_nested: false or remove nested relations.",
+            "reconstruction_error": None,
+            "runtime_seconds": 0.0,
+            "rank": problem.get("rank"),
+            "num_tensors": len(problem.get("tensors", [])),
+            "solver_family": problem.get("solver", {}).get("family"),
+        }
+        with open(result_file, "w") as f:
+            json.dump(result, f, indent=2)
+        run_entries.append({"candidate_id": candidate_id, "result_file": result_file})
+        continue
+
     ran_with_mock = use_mock
 
     if not use_mock:
@@ -47,33 +71,26 @@ for entry in compiled_manifest["problems"]:
                 capture_output=True, text=True, timeout=600,
             )
             if proc.returncode == 0 and os.path.exists(result_file):
-                run_entries.append({
-                    "candidate_id": candidate_id,
-                    "result_file": result_file,
-                })
+                run_entries.append({"candidate_id": candidate_id, "result_file": result_file})
                 continue
             else:
                 stderr = proc.stderr
                 if "mwTensor" in stderr or "there is no package" in stderr:
                     ran_with_mock = True
                 else:
-                    # Genuine R error
                     result = {
                         "candidate_id": candidate_id,
                         "success": False,
                         "error_message": stderr[:500] if stderr else "R script failed",
                         "reconstruction_error": None,
                         "runtime_seconds": 0.0,
-                        "rank": problem.get("search", {}).get("max_rank"),
+                        "rank": problem.get("rank"),
                         "num_tensors": len(problem.get("tensors", [])),
                         "solver_family": problem.get("solver", {}).get("family"),
                     }
                     with open(result_file, "w") as f:
                         json.dump(result, f, indent=2)
-                    run_entries.append({
-                        "candidate_id": candidate_id,
-                        "result_file": result_file,
-                    })
+                    run_entries.append({"candidate_id": candidate_id, "result_file": result_file})
                     continue
         except FileNotFoundError:
             ran_with_mock = True
@@ -84,22 +101,19 @@ for entry in compiled_manifest["problems"]:
                 "error_message": "Timeout after 600s",
                 "reconstruction_error": None,
                 "runtime_seconds": 600.0,
-                "rank": problem.get("search", {}).get("max_rank"),
+                "rank": problem.get("rank"),
                 "num_tensors": len(problem.get("tensors", [])),
                 "solver_family": problem.get("solver", {}).get("family"),
             }
             with open(result_file, "w") as f:
                 json.dump(result, f, indent=2)
-            run_entries.append({
-                "candidate_id": candidate_id,
-                "result_file": result_file,
-            })
+            run_entries.append({"candidate_id": candidate_id, "result_file": result_file})
             continue
 
     if ran_with_mock:
-        # Mock mode: SVD-based reconstruction error
+        # Mock mode: SVD-based reconstruction error using rank from problem JSON
         start_time = time.time()
-        rank = problem.get("search", {}).get("max_rank", 3)
+        rank = problem.get("rank", 3)
 
         total_error_sq = 0.0
         for tensor_info in problem.get("tensors", []):
@@ -129,10 +143,7 @@ for entry in compiled_manifest["problems"]:
         with open(result_file, "w") as f:
             json.dump(result, f, indent=2)
 
-    run_entries.append({
-        "candidate_id": candidate_id,
-        "result_file": result_file,
-    })
+    run_entries.append({"candidate_id": candidate_id, "result_file": result_file})
 
 # Write run manifest
 manifest = {
