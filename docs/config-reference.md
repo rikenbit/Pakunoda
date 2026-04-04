@@ -27,12 +27,26 @@ solver:
   family: CoupledMWCA        # Optional. Default: CoupledMWCA.
 
 search:
+  # --- Enumeration constraints ---
   max_rank: <int>                    # Optional. Default: 10.
   max_blocks: <int>                  # Optional. Default: all blocks.
   min_shared_fraction: <float>       # Optional. Default: 0.0. Range: 0.0-1.0.
   allow_partial_coupling: <bool>     # Optional. Default: true.
   allow_nested: <bool>               # Optional. Default: false.
   allow_frozen_modes: <bool>         # Optional. Default: false.
+  mock: <bool>                       # Optional. Default: false. Use SVD mock solver.
+
+  # --- Optuna search (when enabled: true) ---
+  enabled: <bool>                    # Optional. Default: false.
+  goal: imputation                   # Optional. Only 'imputation' supported.
+  max_trials: <int>                  # Optional. Default: 20. Trials per candidate.
+  seed: <int>                        # Optional. Random seed for reproducibility.
+  rank_range: [<int>, <int>]         # Optional. Default: [2, 10].
+  init_policies: [<string>, ...]     # Optional. Default: [random, svd].
+  weight_scaling_range: [<float>, <float>]  # Optional. Default: null (disabled).
+  masking:
+    scheme: elementwise              # Optional. Only 'elementwise' supported.
+    fraction: <float>                # Optional. Default: 0.1.
 
 report:
   output_dir: <path>         # Optional. Default: results.
@@ -62,6 +76,36 @@ If `true`, candidates using nested relations are included.
 If `false` (default), all modes in every candidate are decomposed.
 If `true`, an additional frozen-mode variant is generated per candidate,
 where all non-shared modes have status `freeze` instead of `decompose`.
+
+### mock
+If `true`, use the Python SVD-based mock solver instead of R/mwTensor.
+The mock solver only handles 2D matrices.
+Useful for development and testing without an R environment.
+
+## Optuna search settings
+
+These settings are used when `search.enabled: true`.
+
+### enabled
+Set to `true` to run the Optuna search pipeline (prepare_search → run_search → summarize_search → recommend) in addition to the core pipeline.
+
+### goal
+Currently only `imputation` is supported. The objective is to minimize RMSE on artificially masked elements.
+
+### max_trials
+Number of Optuna trials per candidate. Default: 20.
+
+### rank_range
+`[min, max]` range for the rank hyperparameter. Default: `[2, 10]`.
+
+### init_policies
+List of initialization policies to search over. Valid values: `random`, `svd`, `nonneg_random`. Default: `[random, svd]`.
+
+### masking.scheme
+Masking scheme for imputation evaluation. Currently only `elementwise` (random element-wise masking). Future: `block_wise`, `relation_aware`.
+
+### masking.fraction
+Fraction of elements to hold out. Default: 0.1.
 
 ## Block kinds
 

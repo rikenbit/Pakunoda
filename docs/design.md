@@ -59,10 +59,17 @@ config.yaml + data files
 
 Pakunoda's core logic is organized in three layers:
 
-### Layer 1: Relation Graph (`pakunoda/graph.py`)
+### Layer 1: Relation Graph
 
-The **RelationGraph** is the typed internal representation of the block-mode structure.
-It holds:
+There are two representations of the relation graph, used at different stages:
+
+- `pakunoda/relation_graph.py` — dict-based. Used by the `graph` Snakemake rule to produce
+  `relation_graph.json`. Simple, serializable, used for the legacy `compile` path.
+- `pakunoda/graph.py` — typed `RelationGraph` dataclass. Used by `enumerate` and `search`.
+  Built from config via `RelationGraph.from_config()` or from the JSON via
+  `RelationGraph.from_graph_json()`.
+
+The **RelationGraph** dataclass holds:
 
 - **Blocks**: the data matrices/tensors declared in config
 - **ModeNodes**: each (block, mode) pair with its dimension
@@ -170,3 +177,34 @@ Each result is scored with:
 All scores are aggregated into:
 - `summary.json`: ranked list of candidates sorted by reconstruction error, plus config snapshot
 - `summary.tsv`: tabular format for quick inspection
+
+## Search and recommendation
+
+### Optuna search (`run_search`)
+
+Each candidate gets its own Optuna study (stored in a shared SQLite file).
+The objective is **imputation RMSE**: elements are masked at random, the solver
+runs on the masked data, and error is measured on the held-out elements.
+
+Search parameters (per trial):
+- **rank** — integer in `rank_range`
+- **init_policy** — categorical from `init_policies`
+- **weight_scaling** — optional float range
+
+The mock solver (SVD-based) is used when `search.mock: true` or R/mwTensor
+is unavailable. The mock only handles 2D matrices; higher-order tensors are
+returned unchanged.
+
+### Recommendation (`recommend`)
+
+`recommendation.yaml` is produced by `pakunoda/search/recommend.py` and contains:
+
+- **best_by_error** — candidate + trial with lowest imputation RMSE
+- **best_by_balanced** — candidate + trial with lowest weighted score
+  (0.7 * normalized error + 0.3 * normalized complexity).
+  These weights are **fixed heuristics**, not learned.
+- **top_n** — top candidates ranked by error
+- **explanation** — one-line natural-language summary
+
+The balanced score uses min-max normalization across candidates, so it is only
+meaningful when there are at least 2 successful candidates.

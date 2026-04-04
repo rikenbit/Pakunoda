@@ -2,9 +2,19 @@
 
 Generates a structured JSON problem definition that mwTensor's CoupledMWCA can consume.
 
-Two compilation paths:
-1. compile_problem: legacy single-problem compilation from graph dict (used by compile rule)
-2. compile_candidate: compiles a Candidate object into a CoupledMWCA problem definition
+Two compilation paths exist for historical reasons:
+
+- compile_problem(config, graph_dict, block_metadata)
+    Project-level compile. Takes the full config and the dict-based relation graph
+    (output of the ``graph`` rule), and produces a single problem.json covering all
+    blocks.  Used by the ``compile`` Snakemake rule.  This is the original MVP path
+    and is kept for backward compatibility / single-shot use.
+
+- compile_candidate(candidate_dict, config, block_metadata)
+    Candidate-level compile. Takes one serialized Candidate (from the ``enumerate``
+    stage) and produces a problem.json scoped to that candidate's block subset,
+    couplings, and mode assignments.  Used by the ``compile_candidates`` rule.
+    This is the primary path for the search pipeline.
 """
 
 from __future__ import annotations

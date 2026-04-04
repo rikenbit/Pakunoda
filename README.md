@@ -30,14 +30,28 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 | Hyperparameter search (Optuna) | **Pakunoda** |
 | Report generation | **Pakunoda** (future) |
 
-## Current scope
+## Current scope and limitations (v0.1.0)
 
-- **Relations:** `exact` and `nested` only
-- **Solver family:** `CoupledMWCA` only
-- **Scoring:** reconstruction error, runtime, total model complexity
-- **Search:** Optuna-based imputation search (rank, init policy)
-- **Mock mode:** SVD-based approximation when R/mwTensor is unavailable (`search.mock: true`)
-- **Not yet implemented:** Papermill reports, MCP interface, stability metrics, multi-objective search
+**What works:**
+- Relations: `exact` and `nested`
+- Solver family: `CoupledMWCA` only
+- Scoring: reconstruction error, runtime, total model complexity
+- Search: Optuna-based imputation search over rank and init policy
+- File formats: `.tsv` and `.csv` only
+
+**Mock / stub areas:**
+- **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), all execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. The toy example runs entirely in mock mode.
+- **Nested relation mappings.** `nested` relations are accepted in config and enumerated as candidates, but the mapping file is not yet read or applied during compilation. The mapping path is passed through to the problem JSON for mwTensor to handle.
+- **Recommendation heuristics.** `best_by_balanced_score` uses fixed weights (0.7 error, 0.3 complexity) with min-max normalization. This is a simple heuristic, not a principled selection criterion.
+
+**Not yet implemented:**
+- Papermill report generation
+- MCP / AI agent interface
+- Multi-objective Pareto search
+- Block-wise or relation-aware masking (only elementwise random)
+- Stability metrics (cross-validation, bootstrap)
+- `.mat` / `.tns` file format readers
+- Additional solver families beyond CoupledMWCA
 
 ## Quick start
 

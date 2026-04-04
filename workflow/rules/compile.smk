@@ -1,6 +1,7 @@
 # Rule: compile
-# Generates the structured problem definition JSON for mwTensor.
-# This is the final output of the MVP pipeline.
+# Project-level compile: generates a single problem.json covering ALL blocks.
+# This is the original MVP path, kept for backward compatibility.
+# For per-candidate compilation, see compile_candidates.smk.
 
 rule compile:
     input:

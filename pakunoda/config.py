@@ -108,11 +108,3 @@ def load_config(config_dict: dict, base_dir: str = ".") -> dict:
         raise ValueError("Config validation errors:\n  " + "\n  ".join(errors))
 
     return config_dict
-
-
-def get_block_by_id(config: dict, block_id: str) -> dict:
-    """Look up a block by id."""
-    for block in config["blocks"]:
-        if block["id"] == block_id:
-            return block
-    raise KeyError(f"Block not found: {block_id}")
