@@ -1,0 +1,172 @@
+# Pakunoda design document
+
+## Responsibility split
+
+### mwTensor (solver)
+
+- Accepts a single, fully-defined decomposition problem
+- Performs the actual coupled/joint matrix-tensor factorization
+- Returns factor matrices and diagnostics
+
+### Pakunoda (compiler + workflow)
+
+- Reads heterogeneous data files and a declarative config
+- Validates dimensional consistency and relation compatibility
+- Builds the relation graph connecting blocks via shared modes
+- Enumerates valid decomposition candidates under constraints
+- Compiles each candidate into a structured definition that mwTensor can consume
+- Executes candidates via R bridge to mwTensor (or mock solver)
+- Scores and ranks results by reconstruction error and complexity
+- (Future) Generates reports
+
+## Pipeline stages
+
+```
+config.yaml + data files
+        |
+        v
+    [ingest]              Read files, detect format, extract metadata
+        |
+        v
+    [canonicalize]        Convert to common internal format (.npy)
+        |
+        v
+    [validate]            Check config consistency, dimension matching
+        |
+        v
+    [graph]               Build relation graph
+        |
+        v
+    [enumerate]           Constrained candidate enumeration
+        |
+        v
+    [compile_candidates]  Compile each candidate into a problem JSON
+        |
+        v
+    [run_candidates]      Execute via mwTensor or mock solver
+        |
+        v
+    [score_candidates]    Score: reconstruction error, runtime, complexity
+        |
+        v
+    [summarize]           Aggregate into ranked summary
+        |
+        v
+    summary.json / summary.tsv
+```
+
+## Three-layer architecture: Graph → Candidate → Problem
+
+Pakunoda's core logic is organized in three layers:
+
+### Layer 1: Relation Graph (`pakunoda/graph.py`)
+
+The **RelationGraph** is the typed internal representation of the block-mode structure.
+It holds:
+
+- **Blocks**: the data matrices/tensors declared in config
+- **ModeNodes**: each (block, mode) pair with its dimension
+- **Relations**: exact or nested connections between modes across blocks
+
+The graph provides query methods used by enumeration:
+`get_relations_for_blocks()`, `get_shared_block_ids()`, `get_coupled_modes()`.
+
+### Layer 2: Candidate (`pakunoda/candidate.py`)
+
+A **Candidate** is a specific decomposition configuration. It specifies:
+
+- Which **block subset** to include (>= 2 blocks)
+- **ModeAssignments**: for each mode in each block, whether to `decompose` or `freeze`,
+  and whether the factor is `common` (shared via coupling) or `specific` (block-local)
+- **Couplings**: which modes are coupled together (from relations)
+- **Rank**: placeholder (null until search fills it in)
+- **Solver family**: `CoupledMWCA`
+
+Enumeration generates candidates by:
+1. Iterating over block subsets of size 2..max_blocks
+2. Finding applicable relations within each subset
+3. Checking constraints (shared fraction, partial coupling, nested, frozen)
+4. Building mode assignments: coupled modes → common, uncoupled → specific
+
+### Layer 3: Problem JSON (compiled output)
+
+The **compile_candidate** function transforms a Candidate into a
+`CoupledMWCAParams`-equivalent JSON structure that mwTensor can consume.
+Each problem JSON includes:
+
+- Tensor definitions (id, kind, modes, shape, data file path)
+- Coupling groups (which modes are shared)
+- Mode assignments (decompose/freeze, common/specific)
+- Nested relations (if any)
+- Search parameters (max_rank)
+
+## Enumeration constraints
+
+The `search` section of config.yaml controls enumeration:
+
+| Constraint | Default | Effect |
+|---|---|---|
+| `max_blocks` | all | Maximum blocks per candidate |
+| `min_shared_fraction` | 0.0 | Minimum fraction of blocks in at least one relation |
+| `allow_partial_coupling` | true | If false, every block must participate in a relation |
+| `allow_nested` | false | Include nested relations in enumeration |
+| `allow_frozen_modes` | false | Generate frozen-mode variants |
+
+When `allow_frozen_modes` is true, each candidate gets an additional variant where
+all non-shared modes are frozen. This doubles the candidate count at most.
+
+## Config-first design
+
+All behavior is driven by `config.yaml`. There are no CLI flags that change semantics.
+The config declares:
+
+1. What data exists (blocks)
+2. How data relates (relations)
+3. What solver to use
+4. Search bounds and enumeration constraints
+
+## Relation types
+
+- **exact**: Two modes represent the same entities in the same order and count.
+  Dimensions must match exactly.
+- **nested**: One mode's entities are a subset or grouping of another's.
+  Requires a mapping file. (Schema defined, mapping processing is stub.)
+
+## Key design decisions
+
+1. **Snakemake for workflow**: Provides dependency tracking, parallelism, and container support.
+2. **Python for logic**: Config validation, graph construction, enumeration, and compilation are pure Python.
+3. **JSON for intermediate artifacts**: All pipeline stages communicate via JSON metadata files.
+4. **NumPy for canonical format**: All data is converted to .npy for uniform access.
+5. **Constrained enumeration**: Block subset enumeration with explicit constraints, not exhaustive search.
+6. **R bridge with mock fallback**: mwTensor is called via Rscript. When R/mwTensor is unavailable, a mock solver (SVD-based) allows the pipeline to run end-to-end for development and testing.
+
+## Execution and scoring
+
+### Execution (`run_candidates`)
+
+Each compiled candidate is executed by calling `scripts/run_candidate.R` via `Rscript`.
+The R script:
+1. Reads the problem JSON
+2. Loads .npy data files
+3. Builds `Xs` (data list) and `common_model` (coupling structure)
+4. Calls `defaultCoupledMWCAParams()` and `CoupledMWCA()`
+5. Saves `result.json` with reconstruction error and timing
+6. On failure, writes a structured error result
+
+If R or mwTensor is unavailable and `search.mock: true`, a Python mock solver computes
+SVD-based reconstruction error per matrix (truncated to `max_rank` singular values).
+
+### Scoring (`score_candidates`)
+
+Each result is scored with:
+- **reconstruction_error**: from the solver or mock
+- **runtime_seconds**: wall clock time
+- **total_params**: sum of (dimension * rank) across all modes and blocks
+- **success/failure**: boolean with error message on failure
+
+### Summarization (`summarize`)
+
+All scores are aggregated into:
+- `summary.json`: ranked list of candidates sorted by reconstruction error, plus config snapshot
+- `summary.tsv`: tabular format for quick inspection

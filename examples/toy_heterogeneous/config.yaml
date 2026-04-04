@@ -1,0 +1,62 @@
+# Pakunoda toy example: heterogeneous matrix collection with shared modes
+#
+# This example has three matrices:
+#   - expression: samples x genes (5 x 4)
+#   - methylation: samples x cpg_sites (5 x 3)
+#   - interaction: genes x proteins (4 x 3)
+#
+# Relations:
+#   - expression.samples == methylation.samples  (exact: same 5 samples)
+#   - expression.genes == interaction.genes       (exact: same 4 genes)
+#
+# This forms a chain: methylation -- samples -- expression -- genes -- interaction
+
+project:
+  id: toy_heterogeneous
+  description: "Toy example with gene expression, methylation, and protein interaction"
+
+blocks:
+  - id: expression
+    file: data/expression.tsv
+    kind: matrix
+    modes: [samples, genes]
+
+  - id: methylation
+    file: data/methylation.tsv
+    kind: matrix
+    modes: [samples, cpg_sites]
+
+  - id: interaction
+    file: data/interaction.tsv
+    kind: matrix
+    modes: [genes, proteins]
+
+relations:
+  - type: exact
+    between:
+      - { block: expression, mode: samples }
+      - { block: methylation, mode: samples }
+
+  - type: exact
+    between:
+      - { block: expression, mode: genes }
+      - { block: interaction, mode: genes }
+
+solver:
+  family: CoupledMWCA
+
+search:
+  max_rank: 3
+  mock: true  # Use SVD-based mock solver (set false when R + mwTensor are available)
+  enabled: true
+  goal: imputation
+  max_trials: 10
+  seed: 42
+  rank_range: [2, 3]
+  init_policies: [random, svd]
+  masking:
+    scheme: elementwise
+    fraction: 0.1
+
+report:
+  output_dir: results

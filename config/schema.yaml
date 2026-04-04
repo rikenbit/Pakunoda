@@ -1,0 +1,70 @@
+# Pakunoda config schema reference
+#
+# This file documents the expected structure of config.yaml.
+# It is not used for automated validation (yet) but serves as the
+# authoritative reference for the config format.
+
+project:
+  id: string          # required. Unique identifier for this project.
+  description: string # optional. Human-readable description.
+
+blocks:               # required. List of data blocks.
+  - id: string        # required. Unique identifier for this block.
+    file: string      # required. Path to data file (relative to config.yaml).
+    kind: enum        # required. One of: matrix, tensor.
+    modes: [string]   # required. Ordered list of mode names.
+                      # For matrix: exactly 2 modes (rows, columns).
+                      # For tensor: 3+ modes.
+
+relations:            # optional. List of relations between modes.
+  - type: enum        # required. One of: exact, nested.
+    between:          # required. List of (block, mode) endpoints. At least 2.
+      - block: string # required. Block id.
+        mode: string  # required. Mode name (must exist in the block's modes).
+    mapping: string   # required for nested. Path to mapping file (TSV).
+                      # Not used for exact relations.
+
+solver:
+  family: enum        # optional. Default: CoupledMWCA.
+                      # MVP only supports: CoupledMWCA.
+
+search:
+  max_rank: int                 # optional. Default: 10. Maximum rank to search.
+  max_blocks: int               # optional. Default: null (all blocks).
+                                # Maximum number of blocks per candidate.
+  min_shared_fraction: float    # optional. Default: 0.0.
+                                # Minimum fraction of blocks that must participate
+                                # in at least one relation. Range: 0.0 to 1.0.
+  allow_partial_coupling: bool  # optional. Default: true.
+                                # If false, every block in a candidate must
+                                # participate in at least one relation.
+  allow_nested: bool            # optional. Default: false.
+                                # Whether to include nested relations in enumeration.
+  allow_frozen_modes: bool      # optional. Default: false.
+                                # If true, also generate candidates where
+                                # non-shared modes are frozen (not decomposed).
+  mock: bool                    # optional. Default: false.
+                                # If true, use SVD-based mock solver instead of
+                                # R/mwTensor. Useful for development and testing.
+
+  # --- Optuna search settings (used when enabled: true) ---
+  enabled: bool                 # optional. Default: false.
+                                # Enable Optuna-based hyperparameter search.
+  goal: enum                    # optional. Default: imputation.
+                                # Search goal. Currently only 'imputation' is supported.
+  max_trials: int               # optional. Default: 20. Trials per candidate.
+  seed: int                     # optional. Default: null. Random seed for reproducibility.
+  rank_range: [int, int]        # optional. Default: [2, 10]. Min and max rank to search.
+  init_policies: [string]       # optional. Default: [random, svd].
+                                # Initialization policies to try.
+                                # Valid: random, svd, nonneg_random.
+  weight_scaling_range:         # optional. Default: null (disabled).
+    [float, float]              # Min and max weight scaling factor.
+  masking:                      # optional. Masking settings for imputation evaluation.
+    scheme: enum                # optional. Default: elementwise.
+                                # Masking scheme. Currently only 'elementwise'.
+                                # Future: block_wise, relation_aware.
+    fraction: float             # optional. Default: 0.1. Fraction of elements to mask.
+
+report:
+  output_dir: string  # optional. Default: results. Output directory.
