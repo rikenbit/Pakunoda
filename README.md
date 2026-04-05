@@ -33,11 +33,11 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 ## Current scope and limitations (v0.1.0)
 
 **What works:**
-- Relations: `exact` and `nested`
+- Relations: `exact` and `nested` (many-to-one aggregation, 2D matrices only)
 - Solver family: `CoupledMWCA` only
 - Scoring: reconstruction error, runtime, total model complexity
 - Search: Optuna-based imputation search over rank and init policy
-- File formats: `.tsv`, `.csv`, `.mat` (MATLAB v5/v7), `.tns` (FROSTT coordinate)
+- File formats: `.tsv`, `.csv`, `.mat` (MATLAB v5/v7), `.tns` (FROSTT coordinate, dense conversion)
 
 **Mock / stub areas:**
 - **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. Use `config_mock.yaml` for mock mode, `config.yaml` for real solver.

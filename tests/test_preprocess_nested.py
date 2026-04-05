@@ -149,3 +149,61 @@ def test_preprocess_nested_full():
         np.testing.assert_array_almost_equal(result["data"][:, 0], [0.5, 6.5, 12.5, 18.5])
     finally:
         os.unlink(mapping_file)
+
+
+def test_preprocess_nested_same_dimension():
+    """Source and target have the same dimension (4x4 mapping).
+    Source/target should be determined by config order, not shape."""
+    source_data = np.arange(16, dtype=np.float64).reshape(4, 4)
+    source_modes = ["samples", "features_a"]
+    source_mode_names = {"features_a": ["a1", "a2", "a3", "a4"]}
+    target_modes = ["samples", "features_b"]
+    target_mode_names = {"features_b": ["b1", "b2"]}
+
+    # 4 source features -> 2 target features
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".tsv", delete=False) as f:
+        f.write("a1\tb1\n")
+        f.write("a2\tb1\n")
+        f.write("a3\tb2\n")
+        f.write("a4\tb2\n")
+        mapping_file = f.name
+
+    try:
+        result = preprocess_nested_relation(
+            source_data, source_modes, source_mode_names,
+            target_modes, target_mode_names,
+            nested_source_mode="features_a",
+            nested_target_mode="features_b",
+            mapping_file=mapping_file,
+        )
+        assert result["shape"] == [4, 2]
+        assert result["modes"] == ["samples", "features_b"]
+    finally:
+        os.unlink(mapping_file)
+
+
+def test_preprocess_nested_row_mode():
+    """Source mode is axis 0 (rows) instead of axis 1 (columns)."""
+    # 6 genes x 4 conditions -> 3 pathways x 4 conditions
+    source_data = np.arange(24, dtype=np.float64).reshape(6, 4)
+    source_modes = ["genes", "conditions"]
+    source_mode_names = {"genes": ["g1", "g2", "g3", "g4", "g5", "g6"]}
+    target_modes = ["pathways", "conditions"]
+    target_mode_names = {"pathways": ["pA", "pB", "pC"]}
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".tsv", delete=False) as f:
+        f.write("g1\tpA\ng2\tpA\ng3\tpB\ng4\tpB\ng5\tpC\ng6\tpC\n")
+        mapping_file = f.name
+
+    try:
+        result = preprocess_nested_relation(
+            source_data, source_modes, source_mode_names,
+            target_modes, target_mode_names,
+            nested_source_mode="genes",
+            nested_target_mode="pathways",
+            mapping_file=mapping_file,
+        )
+        assert result["shape"] == [3, 4]
+        assert result["modes"] == ["pathways", "conditions"]
+    finally:
+        os.unlink(mapping_file)

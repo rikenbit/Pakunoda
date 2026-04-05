@@ -2,9 +2,14 @@
 
 For each nested relation:
 1. Read the mapping file
-2. Aggregate the source block along the mapped mode
+2. Aggregate the source block along the mapped mode (group-mean)
 3. Save the aggregated block as a new .npy file
 4. Record a replacement: the nested relation becomes exact
+
+Source/target semantics:
+  ``between[0]`` is the **source** (fine-grained, e.g. genes).
+  ``between[1]`` is the **target** (coarse-grained, e.g. pathways).
+  The mapping file maps source entities -> target entities (many-to-one).
 
 If no nested relations exist, produce a manifest indicating no changes.
 """
@@ -40,8 +45,8 @@ for i, canonical_file in enumerate(snakemake.input.canonicals):
     block_data[bid] = np.load(canonical_file)
 
 # Process nested relations
-aggregated_blocks = []  # new blocks produced by aggregation
-replaced_relations = []  # nested relations replaced by exact
+aggregated_blocks = []
+replaced_relations = []
 
 for rel in relations:
     if rel.get("type") != "nested":
@@ -55,37 +60,18 @@ for rel in relations:
     if not mapping_file:
         raise ValueError("Nested relation requires 'mapping' field")
 
-    # Identify source and target: source has the fine-grained mode,
-    # target has the coarse-grained mode.
-    ep0_block = between[0]["block"]
-    ep0_mode = between[0]["mode"]
-    ep1_block = between[1]["block"]
-    ep1_mode = between[1]["mode"]
-
-    # Source is the one whose mode has more entities (fine-grained)
-    meta0 = block_meta[ep0_block]
-    meta1 = block_meta[ep1_block]
-    block0_def = next(b for b in blocks if b["id"] == ep0_block)
-    block1_def = next(b for b in blocks if b["id"] == ep1_block)
-
-    mode0_axis = block0_def["modes"].index(ep0_mode)
-    mode1_axis = block1_def["modes"].index(ep1_mode)
-    dim0 = meta0["shape"][mode0_axis]
-    dim1 = meta1["shape"][mode1_axis]
-
-    if dim0 >= dim1:
-        source_bid, source_mode = ep0_block, ep0_mode
-        target_bid, target_mode = ep1_block, ep1_mode
-    else:
-        source_bid, source_mode = ep1_block, ep1_mode
-        target_bid, target_mode = ep0_block, ep0_mode
+    # between[0] = source (fine-grained), between[1] = target (coarse-grained)
+    source_bid = between[0]["block"]
+    source_mode = between[0]["mode"]
+    target_bid = between[1]["block"]
+    target_mode = between[1]["mode"]
 
     source_def = next(b for b in blocks if b["id"] == source_bid)
     source_meta = block_meta[source_bid]
     target_def = next(b for b in blocks if b["id"] == target_bid)
     target_meta = block_meta[target_bid]
 
-    # Build entity name dicts
+    # Build entity name dicts for source and target mapped modes
     source_mode_axis = source_def["modes"].index(source_mode)
     source_names = {}
     if source_mode_axis == 0 and source_meta.get("row_names"):
@@ -111,6 +97,30 @@ for rel in relations:
         mapping_file=mapping_file,
     )
 
+    # Build entity names for the aggregated block.
+    # The aggregated mode gets the target entity names.
+    # Non-aggregated modes keep the source block's entity names.
+    agg_row_names = None
+    agg_col_names = None
+    agg_modes = result["modes"]
+
+    for mi, mode_name in enumerate(agg_modes):
+        if mode_name == target_mode:
+            # This is the aggregated mode — use target names
+            names = target_names.get(target_mode)
+        else:
+            # This is an un-aggregated mode — inherit from source block
+            orig_axis = source_def["modes"].index(mode_name)
+            if orig_axis == 0:
+                names = source_meta.get("row_names")
+            else:
+                names = source_meta.get("col_names")
+
+        if mi == 0:
+            agg_row_names = names
+        elif mi == 1:
+            agg_col_names = names
+
     # Save aggregated data
     agg_id = "{}_agg_{}".format(source_bid, target_mode)
     agg_npy = os.path.join(outdir, "{}.npy".format(agg_id))
@@ -124,6 +134,8 @@ for rel in relations:
         "shape": result["shape"],
         "canonical_file": agg_npy,
         "aggregated_mode": result["aggregated_mode"],
+        "row_names": agg_row_names,
+        "col_names": agg_col_names,
     })
 
     replaced_relations.append({

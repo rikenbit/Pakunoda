@@ -91,7 +91,10 @@ def load_config(config_dict: dict, base_dir: str = ".") -> dict:
                     f"relations[{i}].between[{j}].mode '{mode}' not in block '{blk}' modes"
                 )
 
-        # nested requires mapping
+        # nested requires mapping and exactly 2 endpoints
+        if rtype == "nested" and len(between) != 2:
+            errors.append(f"relations[{i}]: nested relation must have exactly 2 endpoints "
+                          f"(between[0]=source, between[1]=target)")
         if rtype == "nested" and not rel.get("mapping"):
             errors.append(f"relations[{i}]: nested relation requires 'mapping' field")
         if rtype == "nested" and rel.get("mapping"):

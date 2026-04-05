@@ -129,6 +129,29 @@ def test_nested_requires_mapping():
         load_config(cfg)
 
 
+def test_nested_requires_exactly_2_endpoints():
+    cfg = _minimal_config()
+    cfg["blocks"].append(
+        {"id": "B", "file": "b.tsv", "kind": "matrix", "modes": ["rows", "cols2"]}
+    )
+    cfg["blocks"].append(
+        {"id": "C", "file": "c.tsv", "kind": "matrix", "modes": ["rows", "cols3"]}
+    )
+    cfg["relations"] = [
+        {
+            "type": "nested",
+            "between": [
+                {"block": "A", "mode": "rows"},
+                {"block": "B", "mode": "rows"},
+                {"block": "C", "mode": "rows"},
+            ],
+            "mapping": "m.tsv",
+        }
+    ]
+    with pytest.raises(ValueError, match="exactly 2 endpoints"):
+        load_config(cfg)
+
+
 def test_invalid_solver_family():
     cfg = _minimal_config()
     cfg["solver"]["family"] = "Unknown"

@@ -129,21 +129,31 @@ relations:
 
 ### nested
 
-One mode is a grouping or subset of another. Requires a mapping file (TSV with two columns:
-source entity, target entity).
+One mode is a grouping or subset of another (many-to-one).
+Requires a mapping file and exactly 2 endpoints.
+
+**Ordering matters**: `between[0]` is the **source** (fine-grained, e.g. genes),
+`between[1]` is the **target** (coarse-grained, e.g. pathways).
+The mapping file maps source entities to target entities.
 
 ```yaml
 relations:
   - type: nested
     between:
-      - { block: A, mode: genes }
-      - { block: B, mode: gene_families }
+      - { block: A, mode: genes }          # source (fine-grained)
+      - { block: B, mode: gene_families }  # target (coarse-grained)
     mapping: data/gene_to_family.tsv
 ```
 
 Pakunoda preprocesses nested relations by aggregating the source block along the
-mapped mode (group-mean), producing an aggregated block that matches the target's
-dimension. The nested relation is then replaced by an exact relation.
+source mode (group-mean), producing an aggregated block whose dimension matches
+the target. The nested relation is then replaced by an exact relation.
+
+Limitations:
+- Only 2D matrices (not tensors)
+- Only many-to-one direction (source → target aggregation)
+- Only mean aggregation (no weighted or custom functions)
+- Source block must have entity names for the mapped mode (from TSV headers)
 
 ### Mapping file format
 
@@ -166,7 +176,7 @@ the mapped mode. Only many-to-one mappings are supported (multiple sources per t
 | `.tsv` | Tab-separated values | Supported |
 | `.csv` | Comma-separated values | Supported |
 | `.mat` | MATLAB v5/v7 | Supported |
-| `.tns` | FROSTT coordinate format | Supported |
+| `.tns` | FROSTT coordinate format | Supported (dense conversion; no out-of-core) |
 
 ### `.tns` format
 

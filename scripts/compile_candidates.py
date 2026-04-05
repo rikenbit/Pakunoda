@@ -39,8 +39,8 @@ for agg_block in nested_manifest.get("aggregated_blocks", []):
         "block_id": agg_block["id"],
         "shape": agg_block["shape"],
         "canonical_file": agg_block["canonical_file"],
-        "row_names": None,
-        "col_names": None,
+        "row_names": agg_block.get("row_names"),
+        "col_names": agg_block.get("col_names"),
     }
     effective_config["blocks"].append({
         "id": agg_block["id"],

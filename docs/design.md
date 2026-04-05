@@ -121,7 +121,7 @@ Here is how each field maps to `CoupledMWCAParams`:
 | `rank` | `common_dims[[factor]] = rank` for ALL factors | Uniform rank; future: per-factor rank |
 | `solver.init_policy` | `initCoupledMWCA(params, init_policy=...)` | random / svd / nonneg_random |
 | `solver.seed` | `initCoupledMWCA(params, seed=...)` | Reproducibility |
-| `nested_relations[]` | **Rejected** | R bridge raises error if non-empty |
+| `nested_relations[]` | **Rejected at run time** | Nested rels are preprocessed into exact rels before compile; if any remain in problem JSON, R bridge raises error |
 
 **Important**: Pakunoda v0.2 places ALL factors (shared and non-shared) in
 mwTensor's `common_model`.  mwTensor's `specific_model` layer (`params@specific`)
@@ -167,13 +167,17 @@ The config declares:
   (e.g., genes → gene families).  Requires a mapping file (TSV, two columns:
   source_id, target_id, no header).
 
+  **Source/target ordering**: In `config.yaml`, `between[0]` is the **source**
+  (fine-grained, e.g. genes) and `between[1]` is the **target** (coarse-grained,
+  e.g. pathways).  This ordering is explicit and not inferred from dimensions.
+
   Since mwTensor requires exact dimension matching, Pakunoda handles nested
   relations via **preprocessing aggregation** (`preprocess_nested` stage):
 
   1. Read the mapping file (many-to-one: source entities → target groups)
   2. Build an aggregation matrix (group-mean)
-  3. Aggregate the source block along the mapped mode
-  4. Add the aggregated block to the pipeline
+  3. Aggregate the source block along the source mode
+  4. Add the aggregated block (with entity names preserved) to the pipeline
   5. Replace the nested relation with an exact relation between
      the aggregated block and the target block
 
