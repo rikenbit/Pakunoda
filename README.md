@@ -37,10 +37,10 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 - Solver family: `CoupledMWCA` only
 - Scoring: reconstruction error, runtime, total model complexity
 - Search: Optuna-based imputation search over rank and init policy
-- File formats: `.tsv` and `.csv` only
+- File formats: `.tsv`, `.csv`, `.mat` (MATLAB v5/v7)
 
 **Mock / stub areas:**
-- **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), all execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. The toy example runs entirely in mock mode.
+- **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. Use `config_mock.yaml` for mock mode, `config.yaml` for real solver.
 - **Nested relation mappings.** `nested` relations are accepted in config and enumerated as candidates, but execution is blocked: `run_candidate.R` and `run_candidates.py` raise an explicit error if a candidate contains nested relations. The mapping file path is preserved in the problem JSON but not yet processed.
 - **Recommendation heuristics.** `best_by_balanced_score` uses fixed weights (0.7 error, 0.3 complexity) with min-max normalization. This is a simple heuristic, not a principled selection criterion.
 
@@ -50,29 +50,45 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 - Multi-objective Pareto search
 - Block-wise or relation-aware masking (only elementwise random)
 - Stability metrics (cross-validation, bootstrap)
-- `.mat` / `.tns` file format readers
+- `.tns` (sparse tensor) file format reader
 - Additional solver families beyond CoupledMWCA
 
 ## Quick start
 
 ### Prerequisites
 
-- Python >= 3.7, NumPy, Snakemake, Optuna, PyYAML
+- Python >= 3.7, NumPy, SciPy, Snakemake, Optuna, PyYAML
 - For real solver: R >= 4.1, [mwTensor](https://github.com/rikenbit/mwTensor)
+- Or use Docker (all dependencies included)
 - Or use mock mode (`search.mock: true`) to run without R
 
-### Run the toy example
+### Run with real solver (Docker, recommended)
 
-```bash
-snakemake --snakefile Snakefile --configfile examples/toy_heterogeneous/config.yaml --cores 1
-```
-
-### With Docker
+The Docker image includes R, mwTensor, and all dependencies.
 
 ```bash
 docker build -t pakunoda .
-docker run -v $(pwd)/examples/toy_heterogeneous:/work pakunoda \
-  snakemake --snakefile /app/Snakefile --configfile /work/config.yaml --cores 1
+
+# Real mwTensor solver (default config)
+docker run --rm -v $(pwd)/examples/toy_heterogeneous:/work pakunoda \
+  --snakefile /app/Snakefile --configfile /work/config.yaml --cores 1
+```
+
+### Run with mock solver (no Docker/R required)
+
+```bash
+snakemake --snakefile Snakefile \
+  --configfile examples/toy_heterogeneous/config_mock.yaml --cores 1
+```
+
+### GHCR image
+
+Pre-built image (after CI setup):
+
+```bash
+docker pull ghcr.io/rikenbit/pakunoda:latest
+docker run --rm -v $(pwd)/examples/toy_heterogeneous:/work ghcr.io/rikenbit/pakunoda:latest \
+  --snakefile /app/Snakefile --configfile /work/config.yaml --cores 1
 ```
 
 ## Configuration

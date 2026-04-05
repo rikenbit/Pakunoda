@@ -6,7 +6,7 @@ import tempfile
 import numpy as np
 import pytest
 
-from pakunoda.io import detect_format, read_tsv, ingest_file
+from pakunoda.io import detect_format, read_tsv, read_mat, ingest_file
 
 
 def test_detect_tsv():
@@ -15,6 +15,10 @@ def test_detect_tsv():
 
 def test_detect_csv():
     assert detect_format("data.csv") == "tsv"
+
+
+def test_detect_mat():
+    assert detect_format("data.mat") == "mat"
 
 
 def test_detect_unsupported():
@@ -36,6 +40,47 @@ def test_read_tsv():
         np.testing.assert_array_equal(result["data"], [[1.0, 2.0], [3.0, 4.0]])
     finally:
         os.unlink(f.name)
+
+
+def test_read_mat():
+    import scipy.io
+    with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as f:
+        path = f.name
+    try:
+        data = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+        scipy.io.savemat(path, {"X": data})
+        result = read_mat(path)
+        assert result["shape"] == [3, 2]
+        np.testing.assert_array_equal(result["data"], data)
+        assert result["variable_name"] == "X"
+    finally:
+        os.unlink(path)
+
+
+def test_read_mat_specific_variable():
+    import scipy.io
+    with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as f:
+        path = f.name
+    try:
+        scipy.io.savemat(path, {"A": np.ones((2, 3)), "B": np.zeros((4, 5))})
+        result = read_mat(path, variable_name="B")
+        assert result["shape"] == [4, 5]
+        assert result["variable_name"] == "B"
+    finally:
+        os.unlink(path)
+
+
+def test_ingest_mat():
+    import scipy.io
+    with tempfile.NamedTemporaryFile(suffix=".mat", delete=False) as f:
+        path = f.name
+    try:
+        scipy.io.savemat(path, {"M": np.ones((3, 4))})
+        meta = ingest_file(path)
+        assert meta["format"] == "mat"
+        assert meta["shape"] == [3, 4]
+    finally:
+        os.unlink(path)
 
 
 def test_ingest_tsv():

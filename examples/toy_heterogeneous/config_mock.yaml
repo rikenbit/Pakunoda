@@ -1,14 +1,9 @@
-# Pakunoda toy example: heterogeneous matrix collection with shared modes
-#
-# Three matrices forming a chain:
-#   methylation (5x3) --[samples]--> expression (5x4) --[genes]--> interaction (4x3)
-#
-# This is the DEFAULT config: uses real mwTensor solver (requires Docker or R >= 4.1).
-# For mock mode, see config_mock.yaml.
+# Mock mode config: runs without R/mwTensor (SVD-based approximation).
+# Useful for development and testing.
 
 project:
   id: toy_heterogeneous
-  description: "Toy example with gene expression, methylation, and protein interaction"
+  description: "Toy example (mock solver mode)"
 
 blocks:
   - id: expression
@@ -42,7 +37,16 @@ solver:
 
 search:
   max_rank: 3
-  mock: false
+  mock: true
+  enabled: true
+  goal: imputation
+  max_trials: 10
+  seed: 42
+  rank_range: [2, 3]
+  init_policies: [random, svd]
+  masking:
+    scheme: elementwise
+    fraction: 0.1
 
 report:
   output_dir: results

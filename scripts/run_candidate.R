@@ -18,11 +18,31 @@
 #   solver.seed         -> initCoupledMWCA
 #   nested_relations[]  -> ERROR if non-empty
 #
-# common_model construction:
-#   Each mode gets a globally unique mode label (I1, I2, I3, ...).
-#   Modes in the same coupling group share the same factor label (F0, F1, ...).
-#   Non-shared modes get unique factor labels (S0, S1, ...).
-#   ALL modes of ALL blocks must appear in common_model.
+# Mapping Pakunoda semantics to mwTensor CoupledMWCAParams:
+#
+#   mwTensor has two model layers: common_model and specific_model.
+#   Pakunoda v0.2 uses ONLY common_model (params@specific = FALSE).
+#   All modes (both shared and non-shared) are placed in common_model.
+#
+#   common_model structure:
+#     list(block_id = list(I_label = factor_label, ...))
+#     - I_label:  globally unique mode label (I1, I2, I3, ...).
+#                 Modes in the same coupling group share the same I_label
+#                 because they represent the same entities with identical
+#                 dimensions.
+#     - factor_label:  identifies the factor matrix.
+#                 Shared modes get the same label (F0, F1, ...) -> coupling.
+#                 Non-shared decomposed modes get unique labels (S0, S1, ...).
+#                 Frozen modes get unique labels (Z0, Z1, ...) and their
+#                 common_decomp entry is set to FALSE.
+#
+#   Rank:
+#     params@common_dims[[factor_label]] <- rank  (for ALL factors)
+#     params@specific_dims is left at defaults (unused when specific=FALSE).
+#
+#   Freeze:
+#     params@common_decomp[[factor_label]] <- FALSE
+#     The factor's initial values (from initCoupledMWCA) are kept fixed.
 
 library(jsonlite)
 
@@ -179,20 +199,25 @@ tryCatch({
   names(params@mask) <- names(params@Xs)
   names(params@weights) <- names(params@Xs)
 
-  # Override dims (rank) for all factors
+  # --- Rank: set dims for all common factors ---
+  # In Pakunoda v0.2, all factors (shared and non-shared) live in common_model.
+  # params@specific is FALSE (we don't use mwTensor's specific_model layer),
+  # so specific_dims/specific_decomp are irrelevant and left at defaults.
+  # common_dims controls the number of components for every factor.
   for (fname in names(params@common_dims)) {
     params@common_dims[[fname]] <- rank
   }
-  for (fname in names(params@specific_dims)) {
-    params@specific_dims[[fname]] <- rank
-  }
 
-  # Freeze factors
+  # --- Freeze: set decomp=FALSE for frozen factors ---
+  # A frozen factor's initial values are kept fixed during optimization.
+  # Since all factors are in common_model, we only need common_decomp.
   if (length(frozen_factors) > 0) {
     cat(sprintf("[Pakunoda] Freezing factors: %s\n", paste(frozen_factors, collapse = ", ")))
     for (fname in frozen_factors) {
       if (fname %in% names(params@common_decomp)) {
         params@common_decomp[[fname]] <- FALSE
+      } else {
+        warning(sprintf("Frozen factor '%s' not found in common_decomp; ignoring.", fname))
       }
     }
   }

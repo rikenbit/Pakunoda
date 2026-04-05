@@ -99,28 +99,40 @@ Enumeration generates candidates by:
 
 The **compile_candidate** function transforms a Candidate into a
 `CoupledMWCAParams`-equivalent JSON structure that mwTensor can consume.
-Each problem JSON includes:
-
-- **solver.family** — algorithm selection (CoupledMWCA)
-- **solver.init_policy** — initialization for factor matrices (random/svd/nonneg_random)
-- **solver.seed** — reproducibility seed
-- **rank** — number of components for all factors (common + specific).
-  Sourced from candidate.rank (set by search trial) or config search.max_rank.
-  In CoupledMWCA, this sets `dims` for every factor label.
-- **tensors[]** — data arrays (id, kind, modes, shape, data_file)
-- **couplings[]** — exact coupling groups → `common_model` factor labels (F0, F1, ...)
-- **mode_assignments[]** — per-mode configuration:
-  - `sharing=common` → factor label from coupling group (shared across blocks)
-  - `sharing=specific` → unique factor label (S_blockid_N)
-  - `status=decompose` → `decomp=TRUE` in CoupledMWCA
-  - `status=freeze` → `decomp=FALSE` (factor fixed, not updated during optimization)
-- **nested_relations[]** — **not yet consumed by solver**; run_candidate.R raises
-  an error if non-empty
-- **search.max_rank** — upper bound for rank search
 
 The search pipeline uses `patch_problem_for_trial(problem, params)` to overlay
 trial-specific hyperparameters (rank, init_policy) onto the base problem dict
 before passing to the solver function.
+
+### Contract between compile_candidate (Python) and run_candidate.R
+
+The problem JSON is the contract between the Python compiler and the R bridge.
+Here is how each field maps to `CoupledMWCAParams`:
+
+| Problem JSON field | mwTensor mapping | Notes |
+|---|---|---|
+| `tensors[].data_file` | `Xs` (named list of arrays) | Loaded via RcppCNPy |
+| `tensors[].id` | Names of `Xs` list | e.g. `Xs$expression` |
+| `couplings[].members` | `common_model` factor labels | Members of the same coupling group share the same factor label (F0, F1, ...), which means mwTensor forces the same factor matrix across those modes |
+| `mode_assignments[].sharing=common` | Factor label from coupling (F0, F1, ...) in `common_model` | Shared across blocks |
+| `mode_assignments[].sharing=specific` | Unique factor label (S0, S1, ...) in `common_model` | Per-block; NOT mwTensor's `specific_model` |
+| `mode_assignments[].status=decompose` | `common_decomp[[factor]] = TRUE` | Factor is optimized |
+| `mode_assignments[].status=freeze` | `common_decomp[[factor]] = FALSE` | Factor is fixed at initial values |
+| `rank` | `common_dims[[factor]] = rank` for ALL factors | Uniform rank; future: per-factor rank |
+| `solver.init_policy` | `initCoupledMWCA(params, init_policy=...)` | random / svd / nonneg_random |
+| `solver.seed` | `initCoupledMWCA(params, seed=...)` | Reproducibility |
+| `nested_relations[]` | **Rejected** | R bridge raises error if non-empty |
+
+**Important**: Pakunoda v0.2 places ALL factors (shared and non-shared) in
+mwTensor's `common_model`.  mwTensor's `specific_model` layer (`params@specific`)
+is left at `FALSE`.  This means `specific_dims` and `specific_decomp` are unused.
+Pakunoda's "specific" refers to a non-shared factor *within* `common_model`,
+not mwTensor's `specific_model`.
+
+**Mode labels**: Each mode gets a globally unique I-label (I1, I2, I3, ...).
+Modes in the same coupling group share the same I-label because they represent
+the same set of entities with identical dimensions.  mwTensor validates this
+dimension match internally.
 
 ## Enumeration constraints
 

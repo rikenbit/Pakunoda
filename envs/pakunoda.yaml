@@ -9,6 +9,7 @@ dependencies:
   - numpy>=1.24
   - pyyaml>=6.0
   - optuna>=3.0
+  - scipy>=1.10
   - pytest>=7.0
   # R (core + mwTensor dependencies pre-installed via conda to speed up build)
   - r-base>=4.1
