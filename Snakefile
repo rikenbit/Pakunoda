@@ -39,6 +39,7 @@ rule all:
 # Core pipeline
 include: "workflow/rules/ingest.smk"
 include: "workflow/rules/canonicalize.smk"
+include: "workflow/rules/preprocess_nested.smk"
 include: "workflow/rules/validate.smk"
 include: "workflow/rules/graph.smk"
 include: "workflow/rules/compile.smk"

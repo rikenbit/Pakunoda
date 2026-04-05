@@ -1,7 +1,6 @@
 """File format readers for Pakunoda.
 
-Supported: .tsv, .csv, .mat (MATLAB v5/v7)
-Planned: .tns (sparse tensor)
+Supported: .tsv, .csv, .mat (MATLAB v5/v7), .tns (FROSTT coordinate format)
 """
 
 import csv
@@ -93,9 +92,6 @@ def read_mat(filepath, variable_name=None):
     Returns:
         Dict with keys: 'data' (np.ndarray), 'row_names', 'col_names', 'shape',
                          'variable_name'.
-
-    Raises:
-        ValueError: If no suitable variable is found.
     """
     try:
         import scipy.io
@@ -104,7 +100,6 @@ def read_mat(filepath, variable_name=None):
 
     mat = scipy.io.loadmat(filepath)
 
-    # Filter out internal keys (start with __)
     var_names = [k for k in mat.keys() if not k.startswith("__")]
     if not var_names:
         raise ValueError("No variables found in .mat file: {}".format(filepath))
@@ -131,12 +126,87 @@ def read_mat(filepath, variable_name=None):
     }
 
 
+def read_tns(filepath, shape=None):
+    # type: (str, list) -> dict
+    """Read a .tns file in FROSTT coordinate format.
+
+    Format: each line is ``i1 i2 ... iN value`` (whitespace-separated).
+    Indices are 1-based. Lines starting with '#' are skipped.
+
+    The data is converted to a dense numpy array. For large sparse tensors
+    this may be memory-intensive; that is acceptable for the current MVP.
+
+    Args:
+        filepath: Path to .tns file.
+        shape: Optional explicit shape. If None, inferred from max indices.
+
+    Returns:
+        Dict with keys: 'data' (np.ndarray), 'shape', 'nnz'.
+
+    Raises:
+        ValueError: If file is empty or malformed.
+    """
+    indices = []
+    values = []
+
+    with open(filepath, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                raise ValueError(
+                    "Malformed .tns line (need at least 1 index + 1 value): '{}'".format(line)
+                )
+            # Last element is the value; everything before is indices (1-based)
+            idx = tuple(int(x) - 1 for x in parts[:-1])  # convert to 0-based
+            val = float(parts[-1])
+            indices.append(idx)
+            values.append(val)
+
+    if not indices:
+        raise ValueError("Empty .tns file: {}".format(filepath))
+
+    order = len(indices[0])
+    for i, idx in enumerate(indices):
+        if len(idx) != order:
+            raise ValueError(
+                "Inconsistent order at line {}: expected {} indices, got {}".format(
+                    i + 1, order, len(idx)
+                )
+            )
+
+    # Infer shape from max indices (0-based, so max+1)
+    if shape is None:
+        shape = [max(idx[d] for idx in indices) + 1 for d in range(order)]
+    else:
+        shape = list(shape)
+        if len(shape) != order:
+            raise ValueError(
+                "Explicit shape has {} dims but data has {} index columns".format(
+                    len(shape), order
+                )
+            )
+
+    # Build dense array
+    data = np.zeros(shape, dtype=np.float64)
+    for idx, val in zip(indices, values):
+        data[idx] = val
+
+    return {
+        "data": data,
+        "shape": list(data.shape),
+        "nnz": len(values),
+    }
+
+
 def ingest_file(filepath):
     # type: (str) -> dict
     """Ingest a data file and return metadata.
 
     Returns:
-        Dict with keys: 'format', 'shape', 'row_names', 'col_names'.
+        Dict with keys: 'format', 'shape', and format-specific fields.
     """
     fmt = detect_format(filepath)
 
@@ -155,6 +225,14 @@ def ingest_file(filepath):
             "shape": result["shape"],
             "row_names": result["row_names"],
             "col_names": result["col_names"],
+        }
+    elif fmt == "tns":
+        result = read_tns(filepath)
+        return {
+            "format": fmt,
+            "shape": result["shape"],
+            "row_names": None,
+            "col_names": None,
         }
     else:
         raise NotImplementedError("Format '{}' not yet supported".format(fmt))

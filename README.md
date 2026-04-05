@@ -37,11 +37,11 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 - Solver family: `CoupledMWCA` only
 - Scoring: reconstruction error, runtime, total model complexity
 - Search: Optuna-based imputation search over rank and init policy
-- File formats: `.tsv`, `.csv`, `.mat` (MATLAB v5/v7)
+- File formats: `.tsv`, `.csv`, `.mat` (MATLAB v5/v7), `.tns` (FROSTT coordinate)
 
 **Mock / stub areas:**
 - **Mock solver.** When `search.mock: true` (or R/mwTensor is unavailable), execution uses a Python SVD-based approximation instead of mwTensor. The mock solver only handles 2D matrices; higher-order tensors are returned as-is. Use `config_mock.yaml` for mock mode, `config.yaml` for real solver.
-- **Nested relation mappings.** `nested` relations are accepted in config and enumerated as candidates, but execution is blocked: `run_candidate.R` and `run_candidates.py` raise an explicit error if a candidate contains nested relations. The mapping file path is preserved in the problem JSON but not yet processed.
+- **Nested relation preprocessing.** Many-to-one nested relations (e.g., genes → pathways) are supported via aggregation: Pakunoda reads the mapping file, computes group-mean aggregation of the source block, and replaces the nested relation with an exact relation on the aggregated block. Limitations: only 2D matrices, only many-to-one direction, only mean aggregation. One-to-many expansion and weighted aggregation are not yet supported.
 - **Recommendation heuristics.** `best_by_balanced_score` uses fixed weights (0.7 error, 0.3 complexity) with min-max normalization. This is a simple heuristic, not a principled selection criterion.
 
 **Not yet implemented:**
@@ -50,7 +50,7 @@ runs them through [mwTensor](https://github.com/rikenbit/mwTensor), and produces
 - Multi-objective Pareto search
 - Block-wise or relation-aware masking (only elementwise random)
 - Stability metrics (cross-validation, bootstrap)
-- `.tns` (sparse tensor) file format reader
+- One-to-many nested expansion, weighted aggregation
 - Additional solver families beyond CoupledMWCA
 
 ## Quick start
@@ -140,17 +140,18 @@ search:
 |---|---|---|
 | 1 | `ingest` | Detect file formats, read dimensions, produce metadata JSON |
 | 2 | `canonicalize` | Convert all inputs to a common internal format (NumPy `.npy`) |
-| 3 | `validate` | Check config consistency, dimensional compatibility, relation validity |
-| 4 | `graph` | Build the block-mode relation graph |
-| 5 | `enumerate` | Constrained enumeration of valid decomposition candidates |
-| 6 | `compile_candidates` | Compile each candidate into a mwTensor problem JSON |
-| 7 | `run_candidates` | Execute each candidate via mwTensor (or mock solver) |
-| 8 | `score_candidates` | Score each result: reconstruction error, runtime, complexity |
-| 9 | `summarize` | Aggregate scores into ranked summary JSON and TSV |
-| 10 | `prepare_search` | Create masks and search spaces (when `search.enabled: true`) |
-| 11 | `run_search` | Run Optuna trials for each candidate |
-| 12 | `summarize_search` | Produce trials table, best JSON, summary TSV |
-| 13 | `recommend` | Generate recommendation report with best picks and explanations |
+| 3 | `preprocess_nested` | Aggregate source blocks for nested relations (if any) |
+| 4 | `validate` | Check config consistency, dimensional compatibility, relation validity |
+| 5 | `graph` | Build the block-mode relation graph |
+| 6 | `enumerate` | Constrained enumeration of valid decomposition candidates |
+| 7 | `compile_candidates` | Compile each candidate into a mwTensor problem JSON |
+| 8 | `run_candidates` | Execute each candidate via mwTensor (or mock solver) |
+| 9 | `score_candidates` | Score each result: reconstruction error, runtime, complexity |
+| 10 | `summarize` | Aggregate scores into ranked summary JSON and TSV |
+| 11 | `prepare_search` | Create masks and search spaces (when `search.enabled: true`) |
+| 12 | `run_search` | Run Optuna trials for each candidate |
+| 13 | `summarize_search` | Produce trials table, best JSON, summary TSV |
+| 14 | `recommend` | Generate recommendation report with best picks and explanations |
 
 ## Output structure
 

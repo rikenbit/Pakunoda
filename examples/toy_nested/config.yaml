@@ -1,0 +1,51 @@
+# Pakunoda toy nested example
+#
+# Two matrices with a nested relation:
+#   - expression: 4 samples x 6 genes
+#   - pathway_scores: 4 samples x 3 pathways
+#
+# Relations:
+#   - expression.samples == pathway_scores.samples  (exact: same 4 samples)
+#   - expression.genes -> pathway_scores.pathways    (nested: genes map to pathways)
+#
+# The nested relation uses gene_to_pathway.tsv to aggregate genes into pathways.
+# Pakunoda preprocesses this by creating an aggregated block (expression_agg_pathways)
+# which is then coupled to pathway_scores via an exact relation.
+
+project:
+  id: toy_nested
+  description: "Toy example with gene expression and pathway scores (nested relation)"
+
+blocks:
+  - id: expression
+    file: data/expression.tsv
+    kind: matrix
+    modes: [samples, genes]
+
+  - id: pathway_scores
+    file: data/pathway_scores.tsv
+    kind: matrix
+    modes: [samples, pathways]
+
+relations:
+  - type: exact
+    between:
+      - { block: expression, mode: samples }
+      - { block: pathway_scores, mode: samples }
+
+  - type: nested
+    between:
+      - { block: expression, mode: genes }
+      - { block: pathway_scores, mode: pathways }
+    mapping: data/gene_to_pathway.tsv
+
+solver:
+  family: CoupledMWCA
+
+search:
+  max_rank: 2
+  mock: true
+  allow_nested: true
+
+report:
+  output_dir: results

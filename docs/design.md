@@ -164,12 +164,25 @@ The config declares:
 - **exact**: Two modes represent the same entities in the same order and count.
   Dimensions must match exactly.
 - **nested**: One mode's entities are a subset or grouping of another's
-  (e.g., genes → gene families).  Requires a mapping file.
-  **Not yet executable**: mwTensor's `CoupledMWCA` requires exact dimension
-  matching across shared factors, so nested relations cannot be directly passed
-  to the solver.  A future implementation would pre-aggregate data using the
-  mapping matrix before coupling.  Currently, candidates with nested relations
-  are enumerated but rejected at run time with an explicit error.
+  (e.g., genes → gene families).  Requires a mapping file (TSV, two columns:
+  source_id, target_id, no header).
+
+  Since mwTensor requires exact dimension matching, Pakunoda handles nested
+  relations via **preprocessing aggregation** (`preprocess_nested` stage):
+
+  1. Read the mapping file (many-to-one: source entities → target groups)
+  2. Build an aggregation matrix (group-mean)
+  3. Aggregate the source block along the mapped mode
+  4. Add the aggregated block to the pipeline
+  5. Replace the nested relation with an exact relation between
+     the aggregated block and the target block
+
+  Limitations:
+  - Only 2D matrices (not tensors)
+  - Only many-to-one (aggregation). One-to-many (expansion) is not supported.
+  - Only mean aggregation. Weighted aggregation is not supported.
+  - Source block entity names (row_names or col_names from ingest) must be
+    available for the mapped mode.
 
 ## Key design decisions
 

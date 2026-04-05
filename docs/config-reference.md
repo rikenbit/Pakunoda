@@ -141,7 +141,23 @@ relations:
     mapping: data/gene_to_family.tsv
 ```
 
-Note: nested relation processing is defined in the schema but is a stub in the MVP.
+Pakunoda preprocesses nested relations by aggregating the source block along the
+mapped mode (group-mean), producing an aggregated block that matches the target's
+dimension. The nested relation is then replaced by an exact relation.
+
+### Mapping file format
+
+Two columns, tab-separated, no header. Each row is `source_id<TAB>target_id`.
+Lines starting with `#` are ignored.
+
+```
+gene1	pathwayA
+gene2	pathwayA
+gene3	pathwayB
+```
+
+The source block must have entity names (row_names or col_names from ingest) for
+the mapped mode. Only many-to-one mappings are supported (multiple sources per target).
 
 ## Supported file formats
 
@@ -149,5 +165,20 @@ Note: nested relation processing is defined in the schema but is a stub in the M
 |---|---|---|
 | `.tsv` | Tab-separated values | Supported |
 | `.csv` | Comma-separated values | Supported |
-| `.mat` | MATLAB format | Planned |
-| `.tns` | Tensor format | Planned |
+| `.mat` | MATLAB v5/v7 | Supported |
+| `.tns` | FROSTT coordinate format | Supported |
+
+### `.tns` format
+
+Each line is `i1 i2 ... iN value` (whitespace-separated).
+Indices are **1-based**. Lines starting with `#` are skipped.
+The tensor is read into a dense numpy array (shape inferred from max indices).
+
+```
+1 1 1 5.0
+2 1 2 3.0
+1 2 1 7.0
+```
+
+For large sparse tensors, the dense conversion may be memory-intensive.
+An explicit shape can be provided in the block config (future feature).

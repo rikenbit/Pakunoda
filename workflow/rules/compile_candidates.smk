@@ -5,6 +5,7 @@
 rule compile_candidates:
     input:
         candidates=os.path.join(OUTDIR, PROJECT_ID, "candidates", "candidates.json"),
+        nested_manifest=os.path.join(OUTDIR, PROJECT_ID, "preprocess", "nested_manifest.json"),
         canonicals=expand(
             os.path.join(OUTDIR, PROJECT_ID, "canonical", "{idx}.npy"),
             idx=range(len(config["blocks"]))

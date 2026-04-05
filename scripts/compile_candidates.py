@@ -1,8 +1,12 @@
-"""Snakemake script: compile each candidate into a mwTensor problem definition."""
+"""Snakemake script: compile each candidate into a mwTensor problem definition.
+
+Includes metadata from aggregated blocks (nested preprocessing) if present.
+"""
 
 import json
 import os
 import sys
+import copy
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -19,18 +23,38 @@ for meta_file in snakemake.input.metas:
         meta = json.load(f)
     block_metadata[meta["block_id"]] = meta
 
-# Add canonical file paths
+# Add canonical file paths for original blocks
 for i, canonical_file in enumerate(snakemake.input.canonicals):
     bid = snakemake.config["blocks"][i]["id"]
     if bid in block_metadata:
         block_metadata[bid]["canonical_file"] = canonical_file
+
+# Load nested manifest and add aggregated block metadata
+with open(snakemake.input.nested_manifest) as f:
+    nested_manifest = json.load(f)
+
+effective_config = copy.deepcopy(dict(snakemake.config))
+for agg_block in nested_manifest.get("aggregated_blocks", []):
+    block_metadata[agg_block["id"]] = {
+        "block_id": agg_block["id"],
+        "shape": agg_block["shape"],
+        "canonical_file": agg_block["canonical_file"],
+        "row_names": None,
+        "col_names": None,
+    }
+    effective_config["blocks"].append({
+        "id": agg_block["id"],
+        "kind": agg_block["kind"],
+        "modes": agg_block["modes"],
+        "file": agg_block["canonical_file"],
+    })
 
 # Compile each candidate
 outdir = snakemake.params.outdir
 compiled_files = []
 
 for candidate in candidates_data["candidates"]:
-    problem = compile_candidate(candidate, snakemake.config, block_metadata)
+    problem = compile_candidate(candidate, effective_config, block_metadata)
     outpath = os.path.join(outdir, "{}.problem.json".format(candidate["id"]))
     with open(outpath, "w") as f:
         f.write(problem_to_json(problem))
